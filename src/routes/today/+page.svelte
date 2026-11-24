@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { afterNavigate, replaceState } from '$app/navigation';
+  import { afterNavigate, goto } from '$app/navigation';
   import { page } from '$app/state';
   import { api, problemMessage } from '#lib/client/api.ts';
   import { dietaryGroupValue, novaValue, nutrientFormatter } from '#lib/client/nutrition.ts';
@@ -55,6 +55,10 @@
       : ''
   );
 
+  function currentUrl() {
+    return page.shallow?.url ?? page.url;
+  }
+
   function validDate(value: string) {
     if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
     const parsed = new Date(value);
@@ -105,19 +109,20 @@
   });
 
   function syncUrl() {
-    logOpen = page.url.searchParams.get('log') === '1';
+    const url = currentUrl();
+    logOpen = url.searchParams.get('log') === '1';
     if (logOpen) logMounted = true;
-    const selected = page.url.searchParams.get('date');
+    const selected = url.searchParams.get('date');
     const nextDate = selected && validDate(selected) ? selected : currentDate;
     if (nextDate !== date) return loadDate(nextDate);
   }
 
   function browseDate(value: string) {
     if (!validDate(value)) return;
-    const url = new URL(page.url.href);
+    const url = new URL(currentUrl().href);
     if (value === currentDate) url.searchParams.delete('date');
     else url.searchParams.set('date', value);
-    replaceState(url, page.state);
+    void goto(url, { state: page.state, shallow: true, replace: true });
     void loadDate(value);
   }
 
@@ -130,10 +135,10 @@
 
   async function toggleLog() {
     logOpen = !logOpen;
-    const url = new URL(page.url.href);
+    const url = new URL(currentUrl().href);
     if (logOpen) url.searchParams.set('log', '1');
     else url.searchParams.delete('log');
-    replaceState(url, page.state);
+    void goto(url, { state: page.state, shallow: true, replace: true });
     if (logOpen) {
       logMounted = true;
       await tick();

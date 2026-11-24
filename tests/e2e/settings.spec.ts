@@ -18,6 +18,7 @@ test('shows connected and disconnected provider states and searches thread histo
   await page.getByRole('link', { name: 'Today', exact: true }).click();
   await page.getByRole('button', { name: 'Log', exact: true }).click();
   await page.getByRole('link', { name: 'Chat history' }).click();
+  await expect(page.getByRole('heading', { name: 'Chat history', level: 1 })).toBeVisible();
   const input = page.getByRole('textbox', { name: 'Describe your meal' });
   await input.fill('Check provider with cooked rice');
   await input.press('Enter');

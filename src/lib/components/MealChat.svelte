@@ -39,12 +39,13 @@
   let interruptedTurnId = $state<string | null>(null);
   let stopRequestedFor = $state<string | null>(null);
   let busy = $derived(sending || activeTurnId !== null);
-  let deleting = $state(false);
+  let changingThread = $state(false);
   let problem = $state('');
   let composer = $state<HTMLTextAreaElement>();
   let transcript = $state<HTMLDivElement>();
   let sendController: AbortController | undefined;
   let reloadId = 0;
+  let searchId = 0;
 
   function findPart<P>(message: Message, type: string): P | undefined {
     return message.parts.find(
@@ -109,27 +110,33 @@
   }
 
   async function refresh() {
+    if (sending) return;
+    let version = ++reloadId;
     problem = '';
     loading = true;
     try {
+      let id: string | undefined;
       if (date) {
         const { threads: dailyThreads } = await api<{ threads: Thread[] }>(
           `/api/threads?date=${date}&archived=true`
         );
-        if (dailyThreads[0]) await loadThread(dailyThreads[0].id);
-        return;
+        id = dailyThreads[0]?.id;
+      } else {
+        await list();
+        const previous = sessionStorage.getItem('nutrimaxlent.thread');
+        id =
+          currentUrl().searchParams.get('thread') ??
+          selected?.id ??
+          threads.find((thread) => thread.id === previous)?.id;
       }
-      await list();
-      const previous = sessionStorage.getItem('nutrimaxlent.thread');
-      const id =
-        page.url.searchParams.get('thread') ??
-        selected?.id ??
-        threads.find((thread) => thread.id === previous)?.id;
-      if (id) await loadThread(id);
+      if (version === reloadId && id) {
+        version = reloadId + 1;
+        await loadThread(id);
+      }
     } catch (error) {
-      problem = problemMessage(error);
+      if (version === reloadId) problem = problemMessage(error);
     } finally {
-      loading = false;
+      if (version === reloadId) loading = false;
     }
   }
 
@@ -148,7 +155,7 @@
 
   $effect(() => {
     const threadId = selected?.id;
-    if (!threadId || !activeTurnId || sending) return;
+    if (!threadId || !activeTurnId || sending || loading) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
@@ -166,8 +173,12 @@
     };
   });
 
+  function currentUrl() {
+    return page.shallow?.url ?? page.url;
+  }
+
   function locate(id?: string) {
-    const url = new URL(page.url.href);
+    const url = new URL(currentUrl().href);
     if (id) {
       sessionStorage.setItem('nutrimaxlent.thread', id);
       url.searchParams.set('thread', id);
@@ -225,26 +236,30 @@
   }
 
   async function archive() {
-    if (!selected || busy) return;
+    const thread = selected;
+    if (!thread || busy || changingThread) return;
+    changingThread = true;
     try {
-      await api(`/api/threads/${selected.id}`, { method: 'DELETE' });
+      await api(`/api/threads/${thread.id}`, { method: 'DELETE' });
       newChat();
       await list();
     } catch (error) {
       problem = problemMessage(error);
+    } finally {
+      changingThread = false;
     }
   }
 
   async function removeThread() {
     const thread = selected;
-    if (!thread || busy || deleting) return;
+    if (!thread || busy || changingThread) return;
     if (
       !window.confirm(
         `Permanently delete “${thread.title}” and its messages? Your logged meals will be kept.`
       )
     )
       return;
-    deleting = true;
+    changingThread = true;
     problem = '';
     try {
       await api(`/api/threads/${thread.id}?permanent=true`, { method: 'DELETE' });
@@ -254,38 +269,43 @@
     } catch (error) {
       problem = problemMessage(error);
     } finally {
-      deleting = false;
+      changingThread = false;
     }
   }
 
   async function restore() {
-    if (!selected?.archivedAt) return;
+    const thread = selected;
+    if (!thread?.archivedAt || changingThread) return;
+    changingThread = true;
     try {
-      await api(`/api/threads/${selected.id}`, { method: 'PATCH', data: { archived: false } });
-      await loadThread(selected.id);
+      await api(`/api/threads/${thread.id}`, { method: 'PATCH', data: { archived: false } });
+      await loadThread(thread.id);
       if (!date) await list();
     } catch (error) {
       problem = problemMessage(error);
+    } finally {
+      changingThread = false;
     }
   }
 
   async function searchThreads() {
-    lastQuery = query.trim();
-    if (!lastQuery) {
-      matches = [];
-      return;
-    }
+    const version = ++searchId;
+    const term = query.trim();
+    lastQuery = term;
+    matches = [];
+    if (!term) return;
     try {
-      matches = (
-        await api<{ matches: HistoryMatch[] }>(`/api/search?q=${encodeURIComponent(lastQuery)}`)
-      ).matches;
+      const result = await api<{ matches: HistoryMatch[] }>(
+        `/api/search?q=${encodeURIComponent(term)}`
+      );
+      if (version === searchId) matches = result.matches;
     } catch (error) {
-      problem = problemMessage(error);
+      if (version === searchId) problem = problemMessage(error);
     }
   }
 
   async function send(input: ChatInput) {
-    if (busy || loading || deleting) return;
+    if (busy || loading || changingThread) return;
     ++reloadId;
     sending = true;
     streamText = '';
@@ -306,6 +326,7 @@
         }
       }
       for await (const event of chatStream(thread.id, input, controller.signal)) {
+        if (sendController !== controller) return;
         if (event.type === 'message') {
           messages = [...messages, event.data.message];
           stored = true;
@@ -319,8 +340,9 @@
         else if (event.type === 'committed') entries[event.data.entry.id] = event.data.entry;
         await scrollToLatest();
       }
+      if (sendController !== controller) return;
       await loadThread(thread.id);
-      if (!date) await list();
+      if (sendController === controller && !date) await list();
     } catch (error) {
       if (sendController !== controller) return;
       const latest = thread ? await loadThread(thread.id).catch(() => undefined) : undefined;
@@ -372,7 +394,7 @@
 
   function submit() {
     const value = text.trim();
-    if (!value || busy || loading || deleting) return;
+    if (!value || busy || loading || changingThread) return;
     text = '';
     void send({ kind: 'message', text: value, messageId: crypto.randomUUID() });
   }
@@ -399,7 +421,9 @@
         >
           Threads <span aria-hidden="true">{historyOpen ? '−' : '+'}</span>
         </button>
-        <button class="button" type="button" disabled={deleting} onclick={newChat}>New chat</button>
+        <button class="button" type="button" disabled={changingThread} onclick={newChat}
+          >New chat</button
+        >
       </div>
       <div class="stack history-content" class:expanded={historyOpen} id="chat-history">
         <form
@@ -415,8 +439,9 @@
             id="chat-search"
             type="search"
             bind:value={query}
-            oninput={() => {
-              if (!query) {
+            oninput={(event) => {
+              if (!event.currentTarget.value.trim()) {
+                ++searchId;
                 matches = [];
                 lastQuery = '';
               }
@@ -431,14 +456,14 @@
                 <button
                   type="button"
                   class="thread-button"
-                  disabled={deleting}
+                  disabled={changingThread}
                   onclick={() => selectThread(match.threadId!)}
                 >
                   <strong>{match.title ?? 'Chat'}</strong><span>{match.text}</span>
                 </button>
-              {:else}
-                <a class="thread-button" href="/today"
-                  ><strong>Meal entry</strong><span>{match.text}</span></a
+              {:else if match.logDate}
+                <a class="thread-button" href={`/today?date=${match.logDate}`}
+                  ><strong>{match.title ?? 'Meal entry'}</strong><span>{match.text}</span></a
                 >
               {/if}
             {:else}<p class="small muted">No matches for “{lastQuery}”.</p>{/each}
@@ -448,7 +473,7 @@
                 type="button"
                 class="thread-button"
                 class:active={selected?.id === thread.id}
-                disabled={deleting}
+                disabled={changingThread}
                 onclick={() => selectThread(thread.id)}
               >
                 <strong>{thread.title}</strong>
@@ -469,18 +494,21 @@
         <h2>{selected.title}</h2>
         <div class="row">
           {#if selected.archivedAt}
-            <button class="button" type="button" disabled={deleting} onclick={restore}
+            <button class="button" type="button" disabled={changingThread} onclick={restore}
               >Restore thread</button
             >
           {:else}
-            <button class="button quiet" type="button" disabled={busy || deleting} onclick={archive}
-              >Archive</button
+            <button
+              class="button quiet"
+              type="button"
+              disabled={busy || changingThread}
+              onclick={archive}>Archive</button
             >
           {/if}
           {#if !date}<button
               class="button quiet danger"
               type="button"
-              disabled={busy || deleting}
+              disabled={busy || changingThread}
               onclick={removeThread}>Delete thread</button
             >{/if}
         </div>
@@ -492,7 +520,7 @@
       {:else if !date && messages.length === 0 && !busy}
         <div class="welcome">
           <h2>What did you eat?</h2>
-          <div class="row">
+          <div class="row" role="group" aria-label="Example meals">
             {#each ['avg carbonara serving', '150 g cooked rice'] as example (example)}
               <button
                 class="button"
@@ -529,7 +557,7 @@
           {#if pending && message.id === pendingMessageId && !selected?.archivedAt}
             <MealReview
               {pending}
-              disabled={busy || deleting}
+              disabled={busy || changingThread}
               onconfirm={(answers, replacements) => {
                 const reply = {
                   replyTo: message.id,
@@ -555,7 +583,7 @@
             <button
               class="button"
               type="button"
-              disabled={deleting}
+              disabled={changingThread}
               onclick={() => send({ kind: 'message', text: retry, messageId: crypto.randomUUID() })}
               >Retry message</button
             >
@@ -581,7 +609,7 @@
           id="conversation-input"
           rows="2"
           placeholder="Describe your meal…"
-          disabled={busy || loading || deleting}
+          disabled={busy || loading || changingThread}
           bind:value={text}
           bind:this={composer}
           onkeydown={(event) => {
@@ -600,7 +628,7 @@
         {:else}<button
             class="button primary"
             type="submit"
-            disabled={!text.trim() || loading || deleting}>Send</button
+            disabled={!text.trim() || loading || changingThread}>Send</button
           >{/if}
       </form>
     {/if}

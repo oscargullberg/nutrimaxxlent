@@ -94,7 +94,8 @@ test('Stop ends the accepted turn on the server and allows retry', async ({ page
 
 test('logs carbonara, edits its portion, and undoes it', async ({ page }) => {
   await page.goto('/chat-history');
-  await page.getByRole('button', { name: 'avg carbonara serving' }).click();
+  const examples = page.getByRole('group', { name: 'Example meals' });
+  await examples.getByRole('button', { name: 'avg carbonara serving' }).click();
   await page.getByRole('textbox', { name: 'Describe your meal' }).press('Enter');
   const card = page.getByRole('article', { name: 'Logged meal' });
   await expect(card.getByText('450 kcal')).toBeVisible();
@@ -261,7 +262,8 @@ test('confirmation keeps the reviewed nutrient values after a catalog change', a
 
 test('logs a clear meal and shows it on the Today page', async ({ page }) => {
   await page.goto('/chat-history');
-  await page.getByRole('button', { name: '150 g cooked rice' }).click();
+  const examples = page.getByRole('group', { name: 'Example meals' });
+  await examples.getByRole('button', { name: '150 g cooked rice' }).click();
   await page.getByRole('textbox', { name: 'Describe your meal' }).press('Enter');
   await expect(
     page.getByRole('article', { name: 'Logged meal' }).getByText('180 kcal')
@@ -270,6 +272,8 @@ test('logs a clear meal and shows it on the Today page', async ({ page }) => {
   await expect(
     page
       .getByRole('article', { name: 'Meal entry' })
+      .filter({ hasText: 'Cooked rice' })
+      .first()
       .getByRole('button', { name: 'Replace Cooked rice' })
   ).toBeVisible();
   await expect(page.getByTestId('energy_kcal')).toContainText('kcal');
@@ -414,9 +418,7 @@ test('restores an interrupted meal review and replaces one item before logging',
   await review.getByRole('spinbutton', { name: 'Grams for French fries' }).fill('160');
   await review.getByRole('button', { name: 'Confirm meal' }).click();
   const entry = page.getByRole('article', { name: 'Logged meal' });
-  await expect(
-    entry.getByRole('heading', { name: 'French fries, Peas, & Chipotle dip' })
-  ).toBeVisible();
+  await expect(entry.getByRole('heading', { name: 'Snack', exact: true })).toBeVisible();
   await expect(entry.getByRole('button', { name: 'Replace Peas' })).toBeVisible();
   await expect(entry.getByRole('button', { name: 'Replace Carbonara' })).toHaveCount(0);
   await expect(entry.getByText(/160 g/u)).toBeVisible();

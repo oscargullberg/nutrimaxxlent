@@ -20,18 +20,27 @@ test('opens a saved chat for each date and updates that day’s totals after con
     const log = page.getByRole('button', { name: 'Log', exact: true });
     await expect(composer).toBeHidden();
     await log.click();
+    await expect(page).toHaveURL((url) => {
+      return url.searchParams.get('date') === date && url.searchParams.get('log') === '1';
+    });
     await composer.fill('150 g cooked rice');
     await composer.press('Enter');
     const confirm = page.getByRole('button', { name: 'Confirm and log' });
     await expect(confirm).toBeVisible();
 
     await page.getByRole('button', { name: 'Next day' }).click();
+    await expect(page).toHaveURL((url) => {
+      return url.searchParams.get('date') === nextDate && url.searchParams.get('log') === '1';
+    });
     await expect(page.getByLabel('Log date')).toHaveValue(nextDate);
     await expect(composer).toBeEnabled();
     await expect(confirm).toBeHidden();
     await expect(page.getByText('150 g cooked rice', { exact: true })).toBeHidden();
 
     await page.getByRole('button', { name: 'Previous day' }).click();
+    await expect(page).toHaveURL((url) => {
+      return url.searchParams.get('date') === date && url.searchParams.get('log') === '1';
+    });
     await page.reload();
     await expect(page.getByLabel('Log date')).toHaveValue(date);
     await confirm.click();
@@ -130,6 +139,49 @@ test('logs a grouped message as separate named meals', async ({ page }) => {
   await expect(page.getByRole('article', { name: 'Logged meal' })).toHaveCount(3);
 });
 
+test('opens a past manual entry from history and deletes it with its last item', async ({
+  page,
+  request,
+  baseURL
+}) => {
+  const date = '2199-10-20';
+  const created = await request.post('/api/entries', {
+    headers: { Origin: baseURL! },
+    data: {
+      date,
+      title: 'History fixture',
+      rawText: 'Historyfixturepeas',
+      items: [
+        {
+          kind: 'estimate',
+          label: 'Peas',
+          grams: 100,
+          per100g: { energy_kcal: 80 },
+          confidence: 1,
+          assumptions: ['Fixture']
+        }
+      ]
+    }
+  });
+  expect(created.status()).toBe(201);
+  const { entry } = await created.json();
+
+  await page.goto('/chat-history');
+  const search = page.getByRole('searchbox', { name: 'Search history' });
+  await search.fill('Historyfixturepeas');
+  await search.press('Enter');
+  await page.getByRole('link', { name: /Historyfixturepeas/u }).click();
+  await expect(page.getByLabel('Log date')).toHaveValue(date);
+  await expect(page.getByTestId('energy_kcal')).toHaveText('80 kcal');
+  const meal = page.getByRole('article', { name: 'Meal entry' });
+  await meal.getByText('Item details', { exact: true }).click();
+  await meal.getByRole('button', { name: 'Remove Peas' }).click();
+  await expect(page.getByRole('heading', { name: 'No entries for this day' })).toBeVisible();
+  expect(await (await request.get(`/api/entries/${entry.id}`)).json()).toMatchObject({
+    entry: { status: 'deleted', items: [] }
+  });
+});
+
 test('shows snapshot contributors and clears stale meals when a date fails', async ({
   page,
   request,
@@ -219,6 +271,6 @@ test('shows snapshot contributors and clears stale meals when a date fails', asy
   await expect(page.getByTestId('energy_kcal')).toHaveCount(0);
   await expect(page.getByRole('article', { name: 'Meal entry' })).toHaveCount(0);
   await page.unroute(nextDay);
-  await page.getByRole('button', { name: 'Retry' }).click();
+  await page.getByRole('button', { name: 'Try again' }).click();
   await expect(page.getByRole('heading', { name: 'No entries for this day' })).toBeVisible();
 });
