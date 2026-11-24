@@ -1,0 +1,2 @@
+CREATE INDEX "foods_search_fts_idx" ON "foods" USING gin (to_tsvector('simple', search_text));--> statement-breakpoint
+CREATE INDEX "foods_search_trgm_idx" ON "foods" USING gin ("search_text" gin_trgm_ops);

@@ -1,0 +1,1 @@
+ALTER TABLE "log_entry_items" ADD COLUMN "dietary" jsonb;

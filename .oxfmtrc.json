@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 100,
+  "singleQuote": true,
+  "trailingComma": "none",
+  "semi": true,
+  "svelte": true,
+  "sortTailwindcss": true,
+  "ignorePatterns": [
+    "build/**",
+    ".svelte-kit/**",
+    "node_modules/**",
+    "data/**",
+    "openspec/**",
+    ".agents/**",
+    ".claude/**",
+    ".playwright-mcp/**",
+    "output/**",
+    "todos.md",
+    "playwright-report/**",
+    "test-results/**"
+  ]
+}

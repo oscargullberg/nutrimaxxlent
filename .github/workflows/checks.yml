@@ -1,0 +1,53 @@
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: nutrimaxxlent
+          POSTGRES_USER: nutrimaxxlent
+          POSTGRES_PASSWORD: nutrimaxxlent-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nutrimaxxlent -d nutrimaxxlent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://nutrimaxxlent:nutrimaxxlent-ci@127.0.0.1:5432/nutrimaxxlent
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '12.14.0'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm build
+      - name: Set up test dependencies
+        run: |
+          docker exec -i '${{ job.services.postgres.id }}' psql -U nutrimaxxlent -d nutrimaxxlent -v ON_ERROR_STOP=1 < docker/init.sql
+          pnpm db:migrate
+          pnpm db:seed
+          curl --fail --silent --show-error --location https://github.com/duckdb/duckdb/releases/download/v1.5.6/duckdb_cli-linux-amd64.zip --output "$RUNNER_TEMP/duckdb.zip"
+          echo "6e89deac1ebbc36eed0291caf8b567b030c7b86ac35998f71854e22b3c5d5e2f  $RUNNER_TEMP/duckdb.zip" | sha256sum --check
+          unzip -o "$RUNNER_TEMP/duckdb.zip" -d "$RUNNER_TEMP/duckdb"
+          echo "$RUNNER_TEMP/duckdb" >> "$GITHUB_PATH"
+      - name: Unit and integration tests
+        run: TEST_DATABASE_URL="$DATABASE_URL" pnpm test --maxWorkers=1
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e

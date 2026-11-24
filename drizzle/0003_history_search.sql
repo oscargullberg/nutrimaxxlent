@@ -1,0 +1,2 @@
+CREATE INDEX "chat_messages_content_fts_idx" ON "chat_messages" USING gin (to_tsvector('simple', content));--> statement-breakpoint
+CREATE INDEX "log_entries_raw_text_fts_idx" ON "log_entries" USING gin (to_tsvector('simple', raw_text));
