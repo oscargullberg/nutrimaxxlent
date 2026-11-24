@@ -91,6 +91,16 @@ test.skipIf(!databaseUrl)(
         (await getEntry(db, entryId))?.items.find((item) => item.id === riceId)?.nutrients
           .energy_kcal
       ).toBe(240);
+      const converted = await editLogItem(db, entryId, riceId, { unit: 'kg' });
+      expect(converted?.items.find((item) => item.id === riceId)).toMatchObject({
+        quantity: 0.2,
+        unit: 'kg',
+        grams: 200,
+        nutrients: { energy_kcal: 240 }
+      });
+      await expect(editLogItem(db, entryId, riceId, { unit: 'cup' })).rejects.toMatchObject({
+        code: 'INVALID_INPUT'
+      });
       const edited = await editLogItem(db, entryId, riceId, { grams: 300 });
       expect(edited?.items.find((item) => item.id === riceId)).toMatchObject({
         grams: 300,
@@ -120,7 +130,7 @@ test.skipIf(!databaseUrl)(
       expect(revisions.map(({ action }) => action)).toEqual(
         expect.arrayContaining(['edit_item', 'remove_item', 'edit_entry', 'undo', 'delete'])
       );
-      expect(revisions).toHaveLength(6);
+      expect(revisions).toHaveLength(7);
     } finally {
       if (entryId) {
         const items = await db

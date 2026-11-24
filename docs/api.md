@@ -40,6 +40,8 @@ The UI and API share the configured local origin. Send JSON to mutating routes a
 | `GET /api/meta/sources`                               | Read imported source attribution and revision details.                                                                |
 | `GET /api/export`                                     | Download a JSON copy of local user data.                                                                              |
 
+When editing a catalog food item, sending only `unit` converts its existing amount and preserves the nutrient snapshots. Switching to a unit that requires a portion weight or density needs that food-specific data or an explicit new quantity.
+
 ## Chat events
 
 Send `{"kind":"message","text":"150 g of rice"}` to start a turn. An optional client-generated `messageId` guards against submitting the same message twice. For a pending clarification, send `{"kind":"clarify","replyTo":"<assistant message UUID>","selection":{"optionId":"option-1"}}`. If the question asks for grams, supply `{"grams":150}` as the selection. To commit a pending draft, send `{"kind":"confirm","replyTo":"<assistant message UUID>"}`.

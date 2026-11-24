@@ -21,8 +21,10 @@ import {
 } from '../db/schema.ts';
 import { ApiError } from '../http/api.ts';
 import { canonicalNutrients } from '../../nutrition-reference.ts';
+import { convertMeasurement, normalizeUnit, resolveGrams } from '../nutrition/amounts.ts';
 import { scaleDietary } from '../nutrition/dietary.ts';
 import { createNutrientSnapshots } from '../nutrition/snapshots.ts';
+import { getFood } from './catalog.ts';
 import { getProfile, localDay } from './totals.ts';
 
 const meals = z.enum(meal.enumValues);
@@ -431,16 +433,35 @@ async function getActiveItem(tx: DatabaseTransaction, entryId: string, itemId: s
   return item ?? null;
 }
 
-function changedResolution(item: Item, edit: z.output<typeof portionEdit>) {
+async function changedResolution(db: Reader, item: Item, edit: z.output<typeof portionEdit>) {
   const resolution = item.resolution as ResolvedItem['resolution'];
   if (resolution.kind === 'food') {
+    const unit = edit.grams === undefined ? (edit.unit ?? item.unit) : 'g';
+    let quantity =
+      edit.grams ??
+      edit.quantity ??
+      convertMeasurement(item.quantity, item.unit, unit) ??
+      convertMeasurement(item.grams, 'g', unit);
+    if (quantity === null) {
+      const food = await getFood(db, resolution.foodId);
+      const gramsPerUnit = food && resolveGrams(1, unit, food);
+      if (gramsPerUnit) quantity = item.grams / gramsPerUnit;
+    }
+    if (quantity === null || !Number.isFinite(quantity) || quantity <= 0)
+      throw new ApiError(400, 'INVALID_INPUT', 'Provide an amount for the new unit.');
     return {
       ...resolution,
-      quantity: edit.grams ?? edit.quantity ?? item.quantity,
-      unit: edit.grams ? 'g' : (edit.unit ?? item.unit)
+      quantity,
+      unit
     };
   }
   if (resolution.kind === 'recipe') {
+    if (
+      edit.grams === undefined &&
+      edit.unit !== undefined &&
+      normalizeUnit(edit.unit) !== 'portion'
+    )
+      throw new ApiError(400, 'INVALID_INPUT', 'Enter recipe servings or provide grams.');
     return {
       ...resolution,
       servings: edit.grams
@@ -448,14 +469,20 @@ function changedResolution(item: Item, edit: z.output<typeof portionEdit>) {
         : (edit.quantity ?? resolution.servings)
     };
   }
+  const grams =
+    edit.grams ??
+    (edit.quantity === undefined
+      ? resolution.grams
+      : convertMeasurement(edit.quantity, edit.unit ?? 'g', 'g'));
+  if (grams === null) throw new ApiError(400, 'INVALID_INPUT', 'Enter a weight for this item.');
   if (resolution.kind === 'estimate') {
     return {
       ...resolution,
-      grams: edit.grams ?? edit.quantity ?? resolution.grams,
+      grams,
       per100g: edit.per100g ?? resolution.per100g
     };
   }
-  return { ...resolution, grams: edit.grams ?? edit.quantity ?? resolution.grams };
+  return { ...resolution, grams };
 }
 
 export async function editLogItem(
@@ -469,28 +496,43 @@ export async function editLogItem(
     const item = await getActiveItem(tx, entryId, itemId);
     if (!item) return null;
     const replacing = 'replacement' in fields;
+    const unitOnly =
+      !replacing &&
+      fields.unit !== undefined &&
+      fields.quantity === undefined &&
+      fields.grams === undefined &&
+      fields.per100g === undefined;
     const resolution = replacing
       ? selectedCatalogItem(fields.replacement)
-      : changedResolution(item, fields);
+      : await changedResolution(tx, item, fields);
+    if (unitOnly && resolution.kind !== 'food')
+      throw new ApiError(400, 'INVALID_INPUT', 'Enter a new weight or serving amount.');
     await validateProposal(
       { reply: 'Edit', needsClarification: false, items: [resolution] },
       databaseProposalCatalog(tx)
     );
-    const resolved = await resolveItem(tx, resolution);
-    if (
-      !replacing &&
-      ((fields.per100g && resolved.kind === 'estimate') || item.provenance === 'corrected')
-    ) {
-      resolved.provenance = 'corrected';
-    }
     const snapshots = await tx
       .select()
       .from(logItemNutrients)
       .where(eq(logItemNutrients.itemId, itemId));
     await recordChange(tx, entryId, replacing ? 'replace_item' : 'edit_item', { item, snapshots });
-    await tx.update(logEntryItems).set(itemValues(resolved)).where(eq(logEntryItems.id, itemId));
-    await tx.delete(logItemNutrients).where(eq(logItemNutrients.itemId, itemId));
-    await saveSnapshots(tx, itemId, resolved);
+    if (unitOnly && resolution.kind === 'food') {
+      await tx
+        .update(logEntryItems)
+        .set({ quantity: resolution.quantity, unit: resolution.unit, resolution })
+        .where(eq(logEntryItems.id, itemId));
+    } else {
+      const resolved = await resolveItem(tx, resolution);
+      if (
+        !replacing &&
+        ((fields.per100g && resolved.kind === 'estimate') || item.provenance === 'corrected')
+      ) {
+        resolved.provenance = 'corrected';
+      }
+      await tx.update(logEntryItems).set(itemValues(resolved)).where(eq(logEntryItems.id, itemId));
+      await tx.delete(logItemNutrients).where(eq(logItemNutrients.itemId, itemId));
+      await saveSnapshots(tx, itemId, resolved);
+    }
     await tx.update(logEntries).set({ updatedAt: new Date() }).where(eq(logEntries.id, entryId));
     return getEntry(tx, entryId);
   });
