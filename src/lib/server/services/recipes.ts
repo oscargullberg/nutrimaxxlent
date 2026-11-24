@@ -2,6 +2,7 @@ import { eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Database } from '../db/client.ts';
 import { foodNutrients, foods, portions, recipeIngredients, recipes } from '../db/schema.ts';
+import { ApiError } from '../http/api.ts';
 import { normalizeSearch } from '../importers/source.ts';
 import { normalizeUnit, resolveGrams, type NutrientAmounts } from '../nutrition/amounts.ts';
 import { rollupRecipe, type RecipeNutrition } from '../nutrition/recipes.ts';
@@ -68,7 +69,7 @@ function recipeTree(
   id: string,
   visited: string[] = []
 ): RecipeNutrition {
-  if (visited.includes(id)) throw new Error('Recipe contains a cycle.');
+  if (visited.includes(id)) throw new ApiError(409, 'RECIPE_CYCLE', 'Recipe contains a cycle.');
   const definition = data.byId.get(id);
   if (!definition) throw new Error('Recipe was not found.');
   const ingredients = (data.byRecipe.get(id) ?? []).map((item) => {
@@ -115,7 +116,7 @@ export async function saveRecipe(db: Database, input: z.input<typeof recipeInput
     const [saved] = id
       ? await tx.update(recipes).set(values).where(eq(recipes.id, id)).returning()
       : await tx.insert(recipes).values(values).returning();
-    if (!saved) throw new Error('Recipe was not found.');
+    if (!saved) throw new ApiError(404, 'NOT_FOUND', 'Recipe was not found.');
 
     await tx.delete(recipeIngredients).where(eq(recipeIngredients.recipeId, saved.id));
     const foodIds = [
@@ -142,23 +143,33 @@ export async function saveRecipe(db: Database, input: z.input<typeof recipeInput
 
       if (ingredient.kind === 'food') {
         const food = selectedById.get(ingredient.foodId);
-        if (!food) throw new Error('Ingredient food was not found.');
+        if (!food) throw new ApiError(400, 'INVALID_INPUT', 'Ingredient food was not found.');
         const grams = resolveGrams(ingredient.quantity, ingredient.unit, {
           densityGPerMl: food.densityGPerMl,
           portions: portionsByFood.get(food.id)
         });
-        if (!grams) throw new Error(`Use a known portion or a weight for ${food.name}.`);
+        if (!grams)
+          throw new ApiError(
+            400,
+            'INVALID_INPUT',
+            `Use a known portion or a weight for ${food.name}.`
+          );
         return { ...base, foodId: food.id, name: food.name, grams };
       }
 
       const subRecipe = data.byId.get(ingredient.recipeId);
-      if (!subRecipe) throw new Error('Ingredient recipe was not found.');
+      if (!subRecipe) throw new ApiError(400, 'INVALID_INPUT', 'Ingredient recipe was not found.');
       const subTree = recipeTree(data, subRecipe.id, [saved.id]);
       const grams =
         normalizeUnit(ingredient.unit) === 'portion'
           ? ingredient.quantity * rollupRecipe(subTree).gramsPerServing
           : resolveGrams(ingredient.quantity, ingredient.unit);
-      if (!grams) throw new Error(`Use a serving or a weight for ${subRecipe.name}.`);
+      if (!grams)
+        throw new ApiError(
+          400,
+          'INVALID_INPUT',
+          `Use a serving or a weight for ${subRecipe.name}.`
+        );
       return { ...base, subRecipeId: subRecipe.id, name: subRecipe.name, grams };
     });
 
@@ -175,7 +186,12 @@ export async function deleteRecipe(db: Database, id: string) {
       .from(recipeIngredients)
       .where(eq(recipeIngredients.subRecipeId, id))
       .limit(1);
-    if (reference) throw new Error('Remove this recipe from other recipes before deleting it.');
+    if (reference)
+      throw new ApiError(
+        409,
+        'RECIPE_IN_USE',
+        'Remove this recipe from other recipes before deleting it.'
+      );
     const [removed] = await tx
       .delete(recipes)
       .where(eq(recipes.id, id))

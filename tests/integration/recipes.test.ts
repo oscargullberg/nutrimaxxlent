@@ -65,8 +65,11 @@ test.skipIf(!databaseUrl)('creates, searches, rolls up, edits and deletes recipe
         },
         recipe!.id
       )
-    ).rejects.toThrow('cycle');
-    await expect(deleteRecipe(db, recipe!.id)).rejects.toThrow('other recipes');
+    ).rejects.toMatchObject({ status: 409, code: 'RECIPE_CYCLE' });
+    await expect(deleteRecipe(db, recipe!.id)).rejects.toMatchObject({
+      status: 409,
+      code: 'RECIPE_IN_USE'
+    });
 
     const updated = await saveRecipe(
       db,

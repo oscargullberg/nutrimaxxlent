@@ -8,7 +8,6 @@ export const GET = endpoint(async ({ params }) =>
 export const PATCH = endpoint(async ({ params, request }) => {
   const db = getDatabase();
   const id = pathId(params);
-  found(await getRecipe(db, id), 'Recipe');
   return json({ recipe: await saveRecipe(db, await readBody(request, recipeInput), id) });
 });
 export const DELETE = endpoint(async ({ params }) => {
