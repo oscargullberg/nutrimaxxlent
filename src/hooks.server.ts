@@ -26,15 +26,11 @@ export const handle: Handle = async ({ event, resolve }) => {
   event.locals.requestId = requestId;
   let response: Response;
   try {
-    if (
-      !safeMethods.has(event.request.method) &&
-      event.request.headers.get('origin') !== readServerEnv().origin
-    ) {
-      throw new ApiError(
-        403,
-        'INVALID_ORIGIN',
-        'Open the app at its configured local origin to make changes.'
-      );
+    if (!safeMethods.has(event.request.method)) {
+      const { origin } = readServerEnv();
+      if (event.request.headers.get('origin') !== origin) {
+        throw new ApiError(403, 'INVALID_ORIGIN', `Open ${origin} to make changes.`);
+      }
     }
     response = await resolve(event);
     if (
