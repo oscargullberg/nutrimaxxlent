@@ -40,7 +40,7 @@ Open **http://127.0.0.1:3000**. Choose **+ Log** for the selected date and try `
 - **Provider.** The default Codex adapter uses an active local CLI session. The connection test sends a synthetic food example. Chat sends the meal text and relevant context to the configured model. [Provider configuration and data flow](docs/llm-provider.md)
 - **Backups.** Run `pnpm backup` with PostgreSQL 18 client tools installed. Restore the archive into a new database with `pg_restore --exit-on-error --dbname <database> <archive>`. Settings also offers a JSON export. [Data model](docs/data-model.md)
 
-The app binds to localhost by default. Keep it local because this single-user setup has no app-level authentication. If you change `PORT` or the host used in the browser, update `ORIGIN` to match. If you change the Compose port or password, update `DATABASE_URL` too.
+The app binds to localhost by default. Keep it local because this single-user setup has no app-level authentication. The default `ORIGIN` uses `127.0.0.1` and the configured port. Set `ORIGIN` explicitly if you use another browser hostname. If you change the PostgreSQL port or password, update `DATABASE_URL` too.
 
 ## Architecture
 
@@ -74,4 +74,4 @@ Manual logging and chat use the same nutrition resolver and persistence code. Br
 
 The demo and browser tests use the database URL to create a temporary database. The role needs permission to create databases and install `pg_trgm` and `unaccent`.
 
-If the app reports a missing database or pending migrations, check `.env`, start Compose, then run `pnpm db:migrate` and `pnpm db:seed`. For a database created outside Compose, run `docker/init.sql` first. If Codex is disconnected, sign in with `npx @openai/codex login` and test the connection in Settings.
+If the app reports a missing database or pending migrations, check `.env`, start Compose, then run `pnpm db:migrate` and `pnpm db:seed`. The migration command also ensures `pg_trgm` and `unaccent` are installed. If Codex is disconnected, sign in with `npx @openai/codex login` and test the connection in Settings.

@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+test.skip(!process.env.E2E_DATABASE_URL, 'Requires an isolated Playwright database.');
+
 test('opens Today and navigates to all four tabs', async ({ page }) => {
   await page.goto('/');
   const navigation = page.getByRole('navigation', { name: 'Main navigation' });

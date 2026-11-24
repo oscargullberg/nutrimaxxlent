@@ -8,9 +8,10 @@ export async function verifyDatabase(db: Database) {
     extensions = await db.execute<{ extname: string }>(sql`
       SELECT extname FROM pg_extension WHERE extname IN ('pg_trgm', 'unaccent')
     `);
-  } catch {
+  } catch (error) {
     throw new Error(
-      'Cannot connect to Postgres. Run docker compose up -d --wait and check DATABASE_URL.'
+      'Cannot connect to Postgres. Run docker compose up -d --wait and check DATABASE_URL.',
+      { cause: error }
     );
   }
   const missing = ['pg_trgm', 'unaccent'].filter(
@@ -18,7 +19,7 @@ export async function verifyDatabase(db: Database) {
   );
   if (missing.length) {
     throw new Error(
-      `Postgres extensions are missing: ${missing.join(', ')}. Apply docker/init.sql to the application database.`
+      `Postgres extensions are missing: ${missing.join(', ')}. Run pnpm db:migrate with a role that can install the extensions.`
     );
   }
 

@@ -3,10 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { sql } from 'drizzle-orm';
-import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 import { connectDatabase } from '../src/lib/server/db/client.ts';
+import { migrateDatabase } from '../src/lib/server/db/migrate.ts';
 import { seedDatabase } from '../src/lib/server/db/seed.ts';
 import { loadLocalEnv, readServerEnv } from '../src/lib/server/env.ts';
 import { seedBrowserCatalog } from './e2e/fixtures.ts';
@@ -38,9 +37,7 @@ try {
   created = true;
   const { db, close } = connectDatabase(testDatabase.href);
   try {
-    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
-    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS unaccent`);
-    await migrate(db, { migrationsFolder: 'drizzle' });
+    await migrateDatabase(db);
     await seedDatabase(db);
     await seedBrowserCatalog(db);
   } finally {

@@ -2,8 +2,8 @@
 
 Nutrimaxxlent is a single-user nutrition log for localhost. A SvelteKit SPA and its local JSON
 and streaming APIs run in one Node process via `adapter-node`. PostgreSQL 18 stores the food
-catalog, recipes, meal logs, chat history, and profile settings. Docker Compose runs Postgres
-with `pg_trgm` and `unaccent` for catalog and history search.
+catalog, recipes, meal logs, chat history, and profile settings. Docker Compose runs Postgres.
+The migration command installs `pg_trgm` and `unaccent` for catalog and history search.
 
 ## Code map
 
