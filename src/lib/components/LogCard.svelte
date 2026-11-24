@@ -118,6 +118,8 @@
   }
 
   async function logAgain() {
+    if (busy) return;
+    busy = true;
     problem = '';
     notice = '';
     try {
@@ -134,10 +136,14 @@
       onlogged?.();
     } catch (error) {
       problem = problemMessage(error);
+    } finally {
+      busy = false;
     }
   }
 
   async function makeRecipe() {
+    if (busy) return;
+    busy = true;
     problem = '';
     notice = '';
     try {
@@ -158,6 +164,8 @@
       notice = 'Recipe saved.';
     } catch (error) {
       problem = problemMessage(error);
+    } finally {
+      busy = false;
     }
   }
 </script>
@@ -368,7 +376,9 @@
     </ul>
     {#if mode === 'chat' && entry.items.length}
       <div class="row">
-        <button class="button quiet" type="button" onclick={logAgain}>Log again</button>
+        <button class="button quiet" type="button" disabled={busy} onclick={logAgain}
+          >Log again</button
+        >
         {#if canSaveRecipe}<button
             class="button quiet"
             type="button"
@@ -385,7 +395,7 @@
         }}
       >
         <label>Recipe name <input required bind:value={recipeName} /></label>
-        <button class="button primary" type="submit">Save recipe</button>
+        <button class="button primary" type="submit" disabled={busy}>Save recipe</button>
       </form>
     {/if}
   {:else}

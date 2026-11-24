@@ -21,7 +21,7 @@ The UI and API share the configured local origin. Send JSON to mutating routes a
 | `DELETE /api/entries/[id]`                            | Mark the entry deleted and exclude it from totals.                                                                    |
 | `POST /api/entries/[id]/undo`                         | Undo an entry and exclude it from totals.                                                                             |
 | `PATCH /api/entries/[id]/items/[itemId]`              | Replace an item or edit its quantity, unit, grams, or estimate values.                                                |
-| `DELETE /api/entries/[id]/items/[itemId]`             | Remove one item from the entry.                                                                                       |
+| `DELETE /api/entries/[id]/items/[itemId]`             | Remove an item. Removing the last item marks the entry deleted.                                                       |
 | `GET /api/totals/day?date=YYYY-MM-DD`                 | Read daily nutrient and food classification totals, grouped meals, and effective goals.                               |
 | `GET /api/totals/range?from=YYYY-MM-DD&to=YYYY-MM-DD` | Read up to 31 days of totals and effective goals.                                                                     |
 | `GET /api/foods?q=...&source=...&limit=...`           | Search foods. The source and limit are optional.                                                                      |

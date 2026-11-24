@@ -12,7 +12,7 @@ export async function getProfile(db: Pick<Database, 'select'>) {
   return profile;
 }
 
-function localDay(date: string, timezone: string) {
+export function localDay(date: string, timezone: string) {
   return sql`${logEntries.loggedAt} >= (${date}::date::timestamp AT TIME ZONE ${timezone})
     AND ${logEntries.loggedAt} < ((${date}::date + 1)::timestamp AT TIME ZONE ${timezone})`;
 }
@@ -93,7 +93,7 @@ export async function dayTotals(db: Database, date: string) {
         nutrient: logItemNutrients
       })
       .from(logEntries)
-      .leftJoin(
+      .innerJoin(
         logEntryItems,
         and(eq(logEntryItems.entryId, logEntries.id), isNull(logEntryItems.removedAt))
       )
@@ -122,8 +122,8 @@ export async function dayTotals(db: Database, date: string) {
   const estimatedTotals: Partial<Record<NutrientId, number>> = {};
   for (const { entry, itemId, grams, dietary, nutrient } of rows) {
     const value = byEntry.get(entry.id) ?? { ...entry, snapshots: [] };
-    if (itemId && !dietaryByItem.has(itemId)) {
-      dietaryByItem.set(itemId, dietary ?? unknownDietary(grams ?? 0));
+    if (!dietaryByItem.has(itemId)) {
+      dietaryByItem.set(itemId, dietary ?? unknownDietary(grams));
     }
     if (nutrient) {
       const id = nutrient.nutrientId as NutrientId;

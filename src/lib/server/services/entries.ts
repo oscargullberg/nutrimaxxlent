@@ -23,7 +23,7 @@ import { ApiError } from '../http/api.ts';
 import { canonicalNutrients } from '../../nutrition-reference.ts';
 import { scaleDietary } from '../nutrition/dietary.ts';
 import { createNutrientSnapshots } from '../nutrition/snapshots.ts';
-import { getProfile } from './totals.ts';
+import { getProfile, localDay } from './totals.ts';
 
 const meals = z.enum(meal.enumValues);
 const timestamp = z.iso.datetime({ offset: true });
@@ -129,21 +129,23 @@ export async function getEntry(db: Reader, id: string) {
 
 export async function listEntries(db: Database, date?: string) {
   const profile = await getProfile(db);
-  const matching = await db
+  const activeItems = db
+    .select({ id: logEntryItems.id })
+    .from(logEntryItems)
+    .where(and(eq(logEntryItems.entryId, logEntries.id), isNull(logEntryItems.removedAt)));
+  const matching = db
     .select()
     .from(logEntries)
     .where(
       and(
         eq(logEntries.profileId, profile.id),
         eq(logEntries.status, 'active'),
-        date
-          ? sql`(${logEntries.loggedAt} AT TIME ZONE ${profile.timezone})::date = ${date}::date`
-          : undefined
+        exists(activeItems),
+        date ? localDay(date, profile.timezone) : undefined
       )
     )
-    .orderBy(desc(logEntries.loggedAt))
-    .limit(100);
-  return entryDetails(db, matching);
+    .orderBy(desc(logEntries.loggedAt), desc(logEntries.id));
+  return entryDetails(db, await (date ? matching : matching.limit(100)));
 }
 
 function itemValues(item: ResolvedItem) {
@@ -223,7 +225,8 @@ export async function addManualEntry(db: Database, input: z.input<typeof manualE
     );
     const items = await Promise.all(
       proposal.items.map((item) => {
-        if (item.kind === 'clarify') throw new Error('Select a food or recipe before logging.');
+        if (item.kind === 'clarify')
+          throw new ApiError(400, 'INVALID_INPUT', 'Select a food or recipe before logging.');
         return resolveItem(tx, item);
       })
     );
@@ -498,11 +501,17 @@ export async function removeLogItem(db: Database, entryId: string, itemId: strin
     const item = await getActiveItem(tx, entryId, itemId);
     if (!item) return null;
     await recordChange(tx, entryId, 'remove_item', item);
+    const now = new Date();
+    await tx.update(logEntryItems).set({ removedAt: now }).where(eq(logEntryItems.id, itemId));
+    const [remaining] = await tx
+      .select({ id: logEntryItems.id })
+      .from(logEntryItems)
+      .where(and(eq(logEntryItems.entryId, entryId), isNull(logEntryItems.removedAt)))
+      .limit(1);
     await tx
-      .update(logEntryItems)
-      .set({ removedAt: new Date() })
-      .where(eq(logEntryItems.id, itemId));
-    await tx.update(logEntries).set({ updatedAt: new Date() }).where(eq(logEntries.id, entryId));
+      .update(logEntries)
+      .set({ status: remaining ? undefined : 'deleted', updatedAt: now })
+      .where(eq(logEntries.id, entryId));
     return getEntry(tx, entryId);
   });
 }
