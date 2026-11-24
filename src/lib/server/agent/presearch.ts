@@ -1,8 +1,20 @@
 import type { Database } from '../db/client.ts';
 import { normalizeSearch } from '../importers/source.ts';
+import { standardUnitNames } from '../nutrition/amounts.ts';
 import { searchFoods } from '../services/catalog.ts';
 import { searchRecipes } from '../services/recipes.ts';
 import { swedishDefault } from './swedish-defaults.ts';
+
+const measurementUnits = [...new Set(standardUnitNames.map(normalizeSearch))]
+  .toSorted((a, b) => b.length - a.length)
+  .map((unit) => RegExp.escape(unit))
+  .join('|');
+const amount = String.raw`(?:\d+(?: \d+)?[/⁄]\d+|\d+(?:\.\d+)?)`;
+const leadingAmount = new RegExp(
+  String.raw`^(?:${amount}\s*(?:[x×]\s*|(?:${measurementUnits}|st)\.?\s+(?:(?:of|av)\s+)?)?|(?:a|en|ett)\s+)`,
+  'u'
+);
+const measuredAmount = new RegExp(String.raw`\s+${amount}\s*(?:${measurementUnits})\b\.?`, 'gu');
 
 function mentions(text: string) {
   return normalizeSearch(text.replace(/\r?\n/gu, ';'))
@@ -26,14 +38,12 @@ function searchPhrase(mention: string) {
       /^(?:(?:i ate|i had|at|log|add|extra|no|without|utan|lagg till|avg\.?|average|normal)\s+)+/u,
       ''
     )
-    .replace(
-      /^(?:\d+(?:\.\d+)?\s*(?:[x×]\s*|(?:kg|g|ml|dl|l|tbsp|tsp|msk|tsk|st)\s+)?|a\s+|en\s+|ett\s+)/u,
-      ''
-    )
+    .replace(leadingAmount, '')
     .replace(
       /^(?:(?:slices?|portions?|servings?|pieces?|glass(?:es)?|bowls?|mugs?|bottles?|cans?|scoops?|handfuls?)\s+of\s+|(?:portion(?:er)?|bit(?:ar)?|skiv(?:a|or))\s+av\s+|(?:cups?(?:\s+of)?|glas|skal|mugg|flaska)\s+)/u,
       ''
     )
+    .replace(measuredAmount, '')
     .replace(
       /\s+(?:portion(?:er|s)?|servings?|tabs?|tablets?|tablett(?:er)?|capsules?|kaps(?:el|lar)?)$/u,
       ''
@@ -50,9 +60,7 @@ export async function preSearch(db: Database, text: string) {
       })
       .slice(0, 16)
       .map(async (mention) => {
-        const query = searchPhrase(mention)
-          .replace(/\s+\d+(?:\.\d+)?\s*(?:kg|g|ml|dl|l)\b/gu, '')
-          .replace(/^vattenglas$/u, 'vatten');
+        const query = searchPhrase(mention).replace(/^vattenglas$/u, 'vatten');
         if (!query) return { mention, query, foods: [], recipes: [] };
         const standard = swedishDefault(query);
         const [foods, recipes] = await Promise.all([

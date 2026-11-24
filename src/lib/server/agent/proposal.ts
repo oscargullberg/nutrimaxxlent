@@ -246,7 +246,7 @@ export async function validateProposal(input: unknown, catalog: ProposalCatalog)
         !allowedUnits.has(normalized) &&
         !available.some((item) => normalizeUnit(item) === normalized)
       ) {
-        invalid('The proposal names an unsupported unit or portion.');
+        invalid(`The proposal uses an unsupported unit or portion: ${unitName}.`);
       }
     }
   }

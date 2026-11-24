@@ -1,14 +1,10 @@
 import { eq } from 'drizzle-orm';
 import type { Database } from '../db/client.ts';
 import { foodComponents, foods, portions, recipeIngredients, recipes } from '../db/schema.ts';
-import {
-  portionUnitName,
-  productLabelSource,
-  standardUnits,
-  type NutrientId
-} from '../../nutrition-reference.ts';
+import { portionUnitName, productLabelSource, type NutrientId } from '../../nutrition-reference.ts';
 import { normalizeSearch } from '../importers/source.ts';
 import {
+  convertMeasurement,
   isLearnedPortion,
   lookupPortionUnit,
   normalizeUnit,
@@ -355,12 +351,10 @@ export async function resolveItem(
     const volumeLabel = food.nutrientRows.find(
       ({ sourceMeta }) => typeof sourceMeta?.referenceMl === 'number'
     );
-    const volume = standardUnits.find(
-      ({ unit, dimension }) => unit === normalizeUnit(item.unit) && dimension === 'volume'
-    );
+    const volumeMl = convertMeasurement(item.quantity, item.unit, 'ml');
     const labelGrams =
-      volume && food.densityGPerMl && volumeLabel
-        ? item.quantity * volume.factorToBase * food.densityGPerMl
+      volumeMl !== null && food.densityGPerMl && volumeLabel
+        ? volumeMl * food.densityGPerMl
         : grams;
     const estimatedNutrients = new Set(Object.keys(estimates) as NutrientId[]);
     if (estimatedNutrients.size) {
@@ -368,11 +362,11 @@ export async function resolveItem(
     }
     if (volumeLabel?.sourceMeta?.weightEstimated === true) {
       base.assumptions.push(
-        volume
+        volumeMl !== null
           ? 'The label is measured by volume. The equivalent weight is estimated.'
           : 'The label is measured by volume. Nutrients for this weight use an estimated density.'
       );
-      if (!volume) {
+      if (volumeMl === null) {
         for (const { nutrientId, sourceMeta } of food.nutrientRows) {
           if (
             sourceMeta?.weightEstimated === true &&

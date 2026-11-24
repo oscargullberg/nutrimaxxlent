@@ -82,6 +82,15 @@ test.skipIf(!databaseUrl)(
         '1 glass of milk, 1 serving of carbonara, a piece of cake, 1 cup of flour'
       );
       expect(household.map(({ query }) => query)).toEqual(['milk', 'carbonara', 'cake', 'flour']);
+      const mixedUnits = await preSearch(
+        db,
+        '3x omega 3 elixir tabs\n5x saffransgifflar\ncoke vanilla 50cl'
+      );
+      expect(mixedUnits.map(({ query }) => query)).toEqual([
+        'omega 3 elixir',
+        'saffransgifflar',
+        'coke vanilla'
+      ]);
     } finally {
       await db.delete(foods).where(eq(foods.sourceId, id));
       await db.delete(foodSources).where(eq(foodSources.id, id));

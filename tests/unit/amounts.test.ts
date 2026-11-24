@@ -1,5 +1,30 @@
 import { expect, test } from 'vitest';
-import { resolveGrams, scaleNutrients } from '../../src/lib/server/nutrition/amounts';
+import {
+  convertMeasurement,
+  resolveGrams,
+  scaleNutrients
+} from '../../src/lib/server/nutrition/amounts';
+
+test.each([
+  [1, 'pound', 'ounces', 16],
+  [2, 'hg', 'kg', 0.2],
+  [500, 'mcg', 'milligrams', 0.5],
+  [50, 'cL', 'litres', 0.5],
+  [2, 'fl. oz.', 'ml', 59.147059125],
+  [1, 'cup', 'tablespoons', 16],
+  [1, 'msk', 'tsk', 3],
+  [3, 'tablet', 'pieces', 3]
+])('converts %s %s to %s', (quantity, from, to, expected) => {
+  expect(convertMeasurement(quantity, from, to)).toBeCloseTo(expected);
+});
+
+test('requires food-specific evidence across dimensions and rejects overflow', () => {
+  expect(convertMeasurement(1, 'oz', 'fl oz')).toBeNull();
+  expect(convertMeasurement(1, 'cup', 'pieces')).toBeNull();
+  expect(convertMeasurement(Number.MAX_VALUE, 'kg', 'g')).toBeNull();
+  expect(resolveGrams(3, 'capsules')).toBeNull();
+  expect(resolveGrams(1, 'bottle', { densityGPerMl: 1 })).toBeNull();
+});
 
 test.each([
   ['grams', 2],

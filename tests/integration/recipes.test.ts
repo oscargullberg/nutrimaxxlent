@@ -32,6 +32,7 @@ test.skipIf(!databaseUrl)('creates, searches, rolls up, edits and deletes recipe
         sourceFoodId: '1',
         sourceVersion: '1',
         kind: 'generic',
+        densityGPerMl: 0.8,
         searchText: 'fixture food'
       })
       .returning({ id: foods.id });
@@ -42,7 +43,7 @@ test.skipIf(!databaseUrl)('creates, searches, rolls up, edits and deletes recipe
     const input = {
       name,
       servings: 2,
-      ingredients: [{ kind: 'food' as const, foodId: food!.id, quantity: 300, unit: 'g' }]
+      ingredients: [{ kind: 'food' as const, foodId: food!.id, quantity: 37.5, unit: 'cl' }]
     };
     const recipe = await saveRecipe(db, input);
     ids.unshift(recipe!.id);

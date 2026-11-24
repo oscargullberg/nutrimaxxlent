@@ -24,14 +24,42 @@ const unitAliases: Readonly<Record<string, string>> = {
   gram: 'g',
   kilograms: 'kg',
   kilogram: 'kg',
+  hektogram: 'hg',
+  hectogram: 'hg',
+  hectograms: 'hg',
+  milligram: 'mg',
+  milligrams: 'mg',
+  μg: 'µg',
+  ug: 'µg',
+  mcg: 'µg',
+  microgram: 'µg',
+  micrograms: 'µg',
+  mikrogram: 'µg',
+  lbs: 'lb',
+  pound: 'lb',
+  pounds: 'lb',
+  ounce: 'oz',
+  ounces: 'oz',
   milliliters: 'ml',
   millilitres: 'ml',
   milliliter: 'ml',
   millilitre: 'ml',
+  centiliters: 'cl',
+  centilitres: 'cl',
+  centiliter: 'cl',
+  centilitre: 'cl',
   deciliters: 'dl',
   decilitres: 'dl',
   deciliter: 'dl',
   decilitre: 'dl',
+  liter: 'l',
+  liters: 'l',
+  litre: 'l',
+  litres: 'l',
+  floz: 'fl oz',
+  'fl. oz': 'fl oz',
+  'fluid ounce': 'fl oz',
+  'fluid ounces': 'fl oz',
   tablespoon: 'tbsp',
   tablespoons: 'tbsp',
   msk: 'tbsp',
@@ -73,24 +101,49 @@ const unitAliases: Readonly<Record<string, string>> = {
   tabletter: 'st',
   tab: 'st',
   tabs: 'st',
+  pc: 'st',
+  pcs: 'st',
+  x: 'st',
+  '×': 'st',
   pieces: 'st',
   piece: 'st'
 };
 
 export function normalizeUnit(unit: string) {
-  const key = unit.trim().toLowerCase().replace(/\.$/, '');
+  const key = unit.trim().toLowerCase().replace(/\s+/gu, ' ').replace(/\.$/u, '');
   return Object.hasOwn(unitAliases, key) ? unitAliases[key]! : key;
 }
 
-const metricVolumeUnits = new Set(['ml', 'dl', 'l']);
+const standardByUnit = new Map<string, (typeof standardUnits)[number]>(
+  standardUnits.map((definition) => [definition.unit, definition])
+);
+const householdVolumeUnits = new Set(['tbsp', 'tsp', 'cup']);
+
+export const standardUnitNames = [
+  ...standardByUnit.keys(),
+  ...Object.keys(unitAliases).filter((unit) => standardByUnit.has(unitAliases[unit]!))
+];
+
+function positiveFinite(value: number | null | undefined): value is number {
+  return typeof value === 'number' && value > 0 && Number.isFinite(value);
+}
+
+export function convertMeasurement(quantity: number, from: string, to: string) {
+  if (!positiveFinite(quantity)) return null;
+  const source = normalizeUnit(from);
+  const target = normalizeUnit(to);
+  if (source === target) return quantity;
+  const sourceUnit = standardByUnit.get(source);
+  const targetUnit = standardByUnit.get(target);
+  if (!sourceUnit || !targetUnit || sourceUnit.dimension !== targetUnit.dimension) return null;
+  const converted = quantity * (sourceUnit.factorToBase / targetUnit.factorToBase);
+  return positiveFinite(converted) ? converted : null;
+}
 
 export function lookupPortionUnit(unit: string) {
   const key = normalizeUnit(unit);
-  if (metricVolumeUnits.has(key)) return 'ml';
-  if (Object.hasOwn(householdPortionUnits, key)) return key;
-  return standardUnits.find(
-    (candidate) => candidate.unit === key && candidate.dimension === 'volume'
-  )?.unit;
+  if (Object.hasOwn(householdPortionUnits, key) || householdVolumeUnits.has(key)) return key;
+  return standardByUnit.get(key)?.dimension === 'volume' ? 'ml' : undefined;
 }
 
 export function matchingPortion<T extends Portion>(unit: string, portions: readonly T[]) {
@@ -122,29 +175,41 @@ export function resolveMeasuredAmount<T extends Portion>(
   unit: string,
   food: { densityGPerMl?: number | null; portions?: readonly T[] } = {}
 ): { grams: number | null; portion?: T } {
-  if (!Number.isFinite(quantity) || quantity <= 0) return { grams: null };
+  if (!positiveFinite(quantity)) return { grams: null };
   const key = normalizeUnit(unit);
-  const standard = standardUnits.find((candidate) => candidate.unit === key);
-  if (standard?.dimension === 'mass') return { grams: quantity * standard.factorToBase };
+  const standard = standardByUnit.get(key);
+  if (standard?.dimension === 'mass') return { grams: convertMeasurement(quantity, key, 'g') };
 
-  const portion = matchingPortion(key, food.portions ?? []);
-  const milliliter =
-    key !== 'ml' && standard && metricVolumeUnits.has(key)
-      ? matchingPortion('ml', food.portions ?? [])
-      : undefined;
-  if (standard && milliliter?.source === 'user' && milliliter.grams > 0)
-    return { grams: quantity * standard.factorToBase * milliliter.grams, portion: milliliter };
-  if (portion && portion.grams > 0 && !isLearnedPortion(portion.source))
-    return { grams: quantity * portion.grams, portion };
+  const portions = food.portions?.filter(({ grams }) => positiveFinite(grams)) ?? [];
+  const portion = matchingPortion(key, portions);
+  const exactGrams = portion && quantity * portion.grams;
+  const exact = positiveFinite(exactGrams) ? { grams: exactGrams, portion } : undefined;
+  if (!standard || exact?.portion?.source === 'user') return exact ?? { grams: null };
+
+  const volume = convertMeasurement(quantity, key, 'ml');
+  if (volume === null) return exact ?? { grams: null };
+  const otherWeights = standardUnits.flatMap((definition) => {
+    if (definition.dimension !== 'volume' || definition.unit === key) return [];
+    const equivalent = matchingPortion(
+      definition.unit,
+      portions.filter((row) => normalizeUnit(row.unit) === definition.unit)
+    );
+    if (!equivalent) return [];
+    const grams = (volume / definition.factorToBase) * equivalent.grams;
+    return positiveFinite(grams) ? [{ grams, portion: equivalent }] : [];
+  });
+  const personal = otherWeights.find(({ portion }) => portion.source === 'user');
+  if (personal) return personal;
+  if (exact && !isLearnedPortion(exact.portion?.source)) return exact;
 
   const density = food.densityGPerMl;
-  if (standard?.dimension === 'volume' && density && Number.isFinite(density) && density > 0) {
-    return { grams: quantity * standard.factorToBase * density };
-  }
-  if (portion && portion.grams > 0) return { grams: quantity * portion.grams, portion };
-  if (standard && milliliter && milliliter.grams > 0)
-    return { grams: quantity * standard.factorToBase * milliliter.grams, portion: milliliter };
-  return { grams: null };
+  const densityGrams = positiveFinite(density) ? volume * density : null;
+  if (positiveFinite(densityGrams)) return { grams: densityGrams };
+  return (
+    otherWeights.find(({ portion }) => !isLearnedPortion(portion.source)) ??
+    exact ??
+    otherWeights[0] ?? { grams: null }
+  );
 }
 
 export function resolveGrams(

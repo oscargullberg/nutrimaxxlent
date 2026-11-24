@@ -17,6 +17,15 @@ test('accepts a valid catalog portion', async () => {
   });
 });
 
+test('accepts a meal with tablets, pieces, and centiliters', async () => {
+  const items = [
+    { ...food, quantity: 3, unit: 'tabs' },
+    { ...food, quantity: 5, unit: 'pieces' },
+    { ...food, quantity: 50, unit: 'cl' }
+  ];
+  await expect(validateProposal({ ...meal, items }, catalog)).resolves.toMatchObject({ items });
+});
+
 test('keeps a valid meal title and ignores an invalid name without rejecting the meal', async () => {
   const input = { ...meal, items: [food] };
   const title = 'Curry with rice and minced meat';

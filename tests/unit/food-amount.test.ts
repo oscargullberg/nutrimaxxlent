@@ -32,12 +32,15 @@ test('a learned glass is reused by its aliases and does not supply a default ser
 test('a learned metric conversion uses the requested volume and yields to catalog density', () => {
   const learned = { ...food, portions: [storedPortion('ml', 0.9)] };
   expect(resolveFoodAmount(learned, 2, 'dl').grams).toBe(180);
+  expect(resolveFoodAmount(learned, 50, 'cl').grams).toBe(450);
+  expect(resolveFoodAmount({ ...food, densityGPerMl: 1 }, 50, 'centilitres').grams).toBe(500);
   expect(resolveFoodAmount({ ...learned, densityGPerMl: 1 }, 2, 'dl')).toMatchObject({
     grams: 200
   });
   const personal = { ...learned, densityGPerMl: 1, portions: [storedPortion('ml', 1.1, 'user')] };
   expect(resolveFoodAmount(personal, 2, 'dl').grams).toBeCloseTo(220);
   expect(lookupPortionUnit('dl')).toBe('ml');
+  expect(lookupPortionUnit('cl')).toBe('ml');
   expect(lookupPortionUnit('l')).toBe('ml');
   expect(lookupPortionUnit('g')).toBeUndefined();
 });
@@ -50,4 +53,14 @@ test('user and catalog portions override a learned conversion for the same unit'
   expect(
     resolveFoodAmount({ ...food, portions: [learned, catalog, personal] }, 1, 'glass').grams
   ).toBe(175);
+});
+
+test('reuses a recorded volume weight across units and prefers an exact personal weight', () => {
+  const cup = storedPortion('cup', 120, 'fdc');
+  const learned = storedPortion('cl', 6);
+  const portions = [cup, learned];
+  expect(resolveFoodAmount({ ...food, portions }, 50, 'cl').grams).toBeCloseTo(250);
+  expect(resolveFoodAmount({ ...food, portions }, 2, 'tbsp').grams).toBe(15);
+  const personal = [storedPortion('ml', 1.1, 'user'), storedPortion('cl', 12, 'user')];
+  expect(resolveFoodAmount({ ...food, portions: personal }, 50, 'cl').grams).toBe(600);
 });

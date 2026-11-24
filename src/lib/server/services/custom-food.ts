@@ -4,7 +4,7 @@ import type { Database } from '../db/client.ts';
 import { foodNutrients, foodSources, foods, portions } from '../db/schema.ts';
 import { normalizeSearch } from '../importers/source.ts';
 import { canonicalNutrients, portionUnitName } from '../../nutrition-reference.ts';
-import { lookupPortionUnit } from '../nutrition/amounts.ts';
+import { lookupPortionUnit, normalizeUnit } from '../nutrition/amounts.ts';
 import { getFood } from './catalog.ts';
 
 const goalNutrients = z.enum(canonicalNutrients.map(({ id }) => id));
@@ -27,7 +27,8 @@ export const foodSettings = z.object({
   portionG: z.number().positive().nullable().optional(),
   portionUnit: z
     .string()
-    .refine((unit) => lookupPortionUnit(unit) === unit)
+    .transform(normalizeUnit)
+    .refine((unit) => lookupPortionUnit(unit) !== undefined)
     .optional()
 });
 

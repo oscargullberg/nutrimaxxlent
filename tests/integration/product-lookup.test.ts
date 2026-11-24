@@ -67,6 +67,11 @@ test.skipIf(!databaseUrl)(
       expect(measured.nutrients.energy_kcal).toBeCloseTo(107.5);
       expect(measured.estimatedNutrients).toBeUndefined();
       expect(measured.assumptions[0]).toContain('equivalent weight is estimated');
+      expect(await resolveItem(db, { ...base, quantity: 6.25, unit: 'cl' })).toMatchObject({
+        grams: measured.grams,
+        nutrients: measured.nutrients,
+        assumptions: measured.assumptions
+      });
       const weighed = await resolveItem(db, { ...base, quantity: 105, unit: 'g' });
       expect(weighed.nutrients.energy_kcal).toBeCloseTo(172);
       expect(weighed.estimatedNutrients).toEqual(['energy_kcal']);

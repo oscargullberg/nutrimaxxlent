@@ -159,11 +159,16 @@ export function portionUnitName(unit: string) {
 export const standardUnits = [
   { unit: 'g', dimension: 'mass', factorToBase: 1 },
   { unit: 'kg', dimension: 'mass', factorToBase: 1000 },
+  { unit: 'hg', dimension: 'mass', factorToBase: 100 },
   { unit: 'mg', dimension: 'mass', factorToBase: 0.001 },
+  { unit: 'µg', dimension: 'mass', factorToBase: 0.000001 },
+  { unit: 'lb', dimension: 'mass', factorToBase: 453.59237 },
   { unit: 'oz', dimension: 'mass', factorToBase: 28.349523125 },
   { unit: 'ml', dimension: 'volume', factorToBase: 1 },
+  { unit: 'cl', dimension: 'volume', factorToBase: 10 },
   { unit: 'dl', dimension: 'volume', factorToBase: 100 },
   { unit: 'l', dimension: 'volume', factorToBase: 1000 },
+  { unit: 'fl oz', dimension: 'volume', factorToBase: 29.5735295625 },
   { unit: 'tbsp', dimension: 'volume', factorToBase: 15 },
   { unit: 'tsp', dimension: 'volume', factorToBase: 5 },
   { unit: 'cup', dimension: 'volume', factorToBase: 240 }

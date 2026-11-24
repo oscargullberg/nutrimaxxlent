@@ -1,6 +1,7 @@
-import { agentPortionSource, portionUnitName, standardUnits } from '../../nutrition-reference.ts';
+import { agentPortionSource, portionUnitName } from '../../nutrition-reference.ts';
 import type { Database } from '../db/client.ts';
 import { portions } from '../db/schema.ts';
+import { convertMeasurement } from '../nutrition/amounts.ts';
 import { getFood } from '../services/catalog.ts';
 import type { LoopTrace } from './loop.ts';
 import { AgentError, type LlmProvider, type PortionLookupResult } from './provider.ts';
@@ -30,9 +31,7 @@ export function createPortionLookup(
     options.onTool?.('lookup_portion');
 
     const { name, nameEn, brand, barcode } = current;
-    const volumeMl =
-      standardUnits.find((standard) => standard.unit === unit && standard.dimension === 'volume')
-        ?.factorToBase ?? null;
+    const volumeMl = convertMeasurement(1, unit, 'ml');
     let result: PortionLookupResult;
     try {
       result = await lookup(
